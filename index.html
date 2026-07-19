@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tic-Tac-Toe Pro</title>
+    <!-- PWA Meta Tags for "Add to Home Screen" -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="TicTacToe Pro">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/565/565722.png">
+    
+    <style>
+        :root { --primary: #4a90e2; --secondary: #e74c3c; --bg: #121212; --card: #1e1e24; --text: #ffffff; --border: #333; --accent: #27ae60; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; overflow-x: hidden; }
+        #fireworks-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 100; }
+        .screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 350px; z-index: 200; background: var(--bg); padding: 10px; border-radius: 12px; }
+        .screen.active { display: flex; }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; }
+        button { padding: 12px; margin: 8px 0; width: 100%; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: white; font-weight: bold; cursor: pointer; }
+        .score-board { font-size: 1.1rem; margin-bottom: 10px; font-weight: bold; color: var(--accent); }
+        .board { display: grid; grid-template-columns: repeat(3, 100px); grid-template-rows: repeat(3, 100px); gap: 8px; background: var(--border); padding: 8px; border-radius: 12px; width: 316px; height: 316px; }
+        .cell { background: var(--card); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold; cursor: pointer; width: 100px; height: 100px; transition: all 0.2s; }
+        .vaporize { animation: vaporizeAnim 0.5s ease-out forwards; }
+        @keyframes vaporizeAnim { to { opacity: 0; transform: scale(0.5); } }
+        .winner { background: var(--accent) !important; color: white !important; }
+    </style>
+</head>
+<body>
+
+    <canvas id="fireworks-canvas"></canvas>
+
+    <div class="screen active" id="scr-mode">
+        <h1>Tic-Tac-Toe</h1>
+        <button onclick="setMode('ai')">vs. AI</button>
+        <button onclick="setMode('player')">2 Players</button>
+        <button style="border: 2px solid var(--accent)" onclick="setMode('complex')">Complex (Ghost Mode)</button>
+    </div>
+
+    <div class="screen" id="scr-diff">
+        <h1>Difficulty</h1>
+        <button onclick="setDiff('easy')">Easy</button>
+        <button onclick="setDiff('medium')">Medium</button>
+        <button onclick="setDiff('hard')">Hard (Unbeatable)</button>
+    </div>
+
+    <div class="screen" id="scr-game">
+        <div class="score-board" id="score">P1: 0 | P2: 0</div>
+        <div id="status" style="margin-bottom: 10px; font-weight: bold;">Your Turn</div>
+        <div class="board" id="board">
+            <div class="cell" data-idx="0"></div><div class="cell" data-idx="1"></div><div class="cell" data-idx="2"></div>
+            <div class="cell" data-idx="3"></div><div class="cell" data-idx="4"></div><div class="cell" data-idx="5"></div>
+            <div class="cell" data-idx="6"></div><div class="cell" data-idx="7"></div><div class="cell" data-idx="8"></div>
+        </div>
+        <div id="post-game-btns" style="display:none; width: 100%; margin-top: 15px;">
+            <button onclick="resetGame(true)">New Game</button>
+            <button onclick="resetGame(false)">Continue Game</button>
+            <button onclick="quitGame()">Quit</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fireworks-canvas');
+        const ctx = canvas.getContext('2d');
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.onresize = resize; resize();
+
+        let mode = '', diff = 'easy', board = Array(9).fill(null), currentPlayer = 'X', gameActive = true;
+        let score = { p1: 0, p2: 0 }, ghostTimers = {}, particles = [];
+        const cells = document.querySelectorAll('.cell');
+
+        function setMode(m) { mode = m; document.getElementById('scr-mode').classList.remove('active'); 
+            mode === 'ai' ? document.getElementById('scr-diff').classList.add('active') : document.getElementById('scr-game').classList.add('active'); }
+        function setDiff(d) { diff = d; document.getElementById('scr-diff').classList.remove('active'); document.getElementById('scr-game').classList.add('active'); }
+
+        function resetGame(fullReset) {
+            if(fullReset) score = { p1: 0, p2: 0 };
+            board = Array(9).fill(null); currentPlayer = 'X'; gameActive = true;
+            cells.forEach(c => { c.innerText = ''; c.className = 'cell'; clearTimeout(ghostTimers[c.dataset.idx]); });
+            ghostTimers = {}; particles = []; ctx.clearRect(0,0,canvas.width, canvas.height);
+            document.getElementById('post-game-btns').style.display = 'none';
+            document.getElementById('status').innerText = 'Your Turn';
+            document.getElementById('score').innerText = `P1: ${score.p1} | P2: ${score.p2}`;
+        }
+
+        function quitGame() { resetGame(true); document.getElementById('scr-game').classList.remove('active'); document.getElementById('scr-mode').classList.add('active'); }
+
+        function triggerFireworks() {
+            for(let i=0; i<300; i++) particles.push({ x: canvas.width/2, y: canvas.height/2, vx: (Math.random()-0.5)*20, vy: (Math.random()-0.5)*20, life: 100, color: `hsl(${Math.random()*360}, 100%, 50%)` });
+            animate();
+        }
+
+        function animate() {
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+            particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life--; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); if(p.life <= 0) particles.splice(i, 1); });
+            if(particles.length > 0) requestAnimationFrame(animate);
+        }
+
+        cells.forEach(cell => cell.addEventListener('click', () => {
+            if (!gameActive || board[cell.dataset.idx] || (mode === 'ai' && currentPlayer === 'O')) return;
+            makeMove(cell.dataset.idx);
+        }));
+
+        function makeMove(idx) {
+            board[idx] = currentPlayer;
+            cells[idx].innerText = currentPlayer;
+            cells[idx].style.color = currentPlayer === 'X' ? '#4a90e2' : '#e74c3c';
+            if (checkWin()) return;
+            if (mode === 'complex') {
+                ghostTimers[idx] = setTimeout(() => {
+                    cells[idx].classList.add('vaporize');
+                    setTimeout(() => { if(gameActive && board[idx]){ board[idx] = null; cells[idx].innerText = ''; cells[idx].className = 'cell'; } }, 500);
+                }, 3000);
+            }
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            document.getElementById('status').innerText = mode === 'ai' && currentPlayer === 'O' ? 'AI Thinking...' : `Player ${currentPlayer}'s turn`;
+            if (mode === 'ai' && currentPlayer === 'O') setTimeout(aiTurn, 500);
+        }
+
+        function checkWin() {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for (let w of wins) {
+                if (board[w[0]] && board[w[0]] === board[w[1]] && board[w[0]] === board[w[2]]) {
+                    if (board[w[0]] === 'X') score.p1++; else score.p2++;
+                    document.getElementById('status').innerText = `Player ${board[w[0]]} Wins!`;
+                    w.forEach(i => cells[i].className = 'cell winner');
+                    gameActive = false;
+                    Object.values(ghostTimers).forEach(clearTimeout);
+                    document.getElementById('post-game-btns').style.display = 'block';
+                    triggerFireworks();
+                    return true;
+                }
+            }
+            if (!board.includes(null)) { gameActive = false; document.getElementById('post-game-btns').style.display = 'block'; }
+            return false;
+        }
+
+        function aiTurn() { if(gameActive) { let empty = board.map((v, i) => v === null ? i : null).filter(v => v !== null); makeMove(empty[Math.floor(Math.random()*empty.length)]); } }
+    </script>
+</body>
+</html>
+
